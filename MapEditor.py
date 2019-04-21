@@ -28,6 +28,9 @@ class MapEditor(QtWidgets.QMainWindow):
         self.scene = QtWidgets.QGraphicsScene()
         self.ui.graphicsView.setScene(self.scene)
 
+        
+
+
         self.setMinimumSize(600, 600)
 
         self.ui.zoomBox.addItem("100 %", 1)
@@ -52,13 +55,47 @@ class MapEditor(QtWidgets.QMainWindow):
         self.ui.closeButton.clicked.connect(self.closeEvent)
         self.ui.saveButton.clicked.connect(self.saveEvent)
 
+        self.ui.graphicsView.horizontalScrollBar().valueChanged.connect(self.scrollChanged)
+        self.ui.graphicsView.verticalScrollBar().valueChanged.connect(self.scrollChanged)
+
+
+    def paintEvent(self, e):
+        self.scrollChanged(0)
+
+
+    def scrollChanged(self, val):
+        
+        x = int(self.ui.graphicsView.horizontalScrollBar().value() /  self.scene.width() * self.im.size[0])
+        y = int(self.ui.graphicsView.verticalScrollBar().value() /  self.scene.height() * self.im.size[1])
+        width = int(self.ui.graphicsView.viewport().size().width() /  self.scene.width() * self.im.size[0])
+        height = int(self.ui.graphicsView.viewport().size().height() /  self.scene.height() * self.im.size[1])
+        self.drawBox(x, y, width, height)
+
+
+    def drawBox(self, x=5, y=5, width=50, height=50):
+
+        im = self.im.convert("RGBA")
+        data = im.tobytes("raw","RGBA")
+        qim = QtGui.QImage(data, im.size[0], im.size[1], QtGui.QImage.Format_ARGB32)
+        pix = QtGui.QPixmap.fromImage(qim)
+
+        painter = QtGui.QPainter(pix)
+        pen = QPen(Qt.red)
+        pen.setWidth(1)
+        painter.setPen(pen)
+        painter.drawRect(x, y, width, height)
+
+        painter.end()
+
+        self.ui.label_2.setPixmap(pix)
+        self.ui.label_2.show()
+
 
     def handleZoom(self, index):
         self.zoom = self.ui.zoomBox.currentData()
         self.pixels_per_cell = self.min_multiplier * self.zoom 
         self.draw_map()
-        pass
-
+        
 
     def read(self, fn):
         # try to open as fn or fn.pgm
@@ -101,6 +138,7 @@ class MapEditor(QtWidgets.QMainWindow):
 
 
     def mapClick(self, event):
+        print('click')
         # get current model value
         x = math.floor(event.scenePos().x() / self.pixels_per_cell)
         y = math.floor(event.scenePos().y() / self.pixels_per_cell)
@@ -139,6 +177,7 @@ class MapEditor(QtWidgets.QMainWindow):
         brush = QBrush(color)
         x = x * self.pixels_per_cell
         y = y * self.pixels_per_cell
+        #print(x, y, self.pixels_per_cell, self.pixels_per_cell)
         self.scene.addRect(x, y, self.pixels_per_cell, self.pixels_per_cell, pen, brush)
 
 
@@ -164,6 +203,9 @@ class MapEditor(QtWidgets.QMainWindow):
                 self.scene.addLine(x, 0, x, pixel_height, pen)
             for y in range(0, pixel_height, self.pixels_per_cell):
                 self.scene.addLine(0, y, pixel_width, y, pen)
+
+
+        
         
 
     def closeEvent(self, event):
