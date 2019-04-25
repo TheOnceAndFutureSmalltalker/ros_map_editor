@@ -100,15 +100,17 @@ class MapEditor(QtWidgets.QMainWindow):
     def read(self, fn):
         # try to open as fn or fn.pgm
         try:
-            self.im = Image.open(fn, mode='rw')
+            self.im = Image.open(fn)
             self.fn = fn
         except:
             fnpgm = fn + '.pgm'
+            print(fnpgm)
             try:
                 self.im = Image.open(fnpgm)
                 self.fn = fnpgm
             except:
-                print(f"ERROR:  Cannot open file {fn} or {fnpgm}.")
+                #print(sys.exc_info()[0])
+                print("ERROR:  Cannot open file", fn, "or", fnpgm)
                 sys.exit(1)
 
         if self.im.format != 'PPM':
@@ -133,12 +135,11 @@ class MapEditor(QtWidgets.QMainWindow):
                 self.origin_x = doc['origin'][0]
                 self.origin_y = doc['origin'][1]
         except:
-            print(f"ERROR:  Corresponding YAML file {fn_yaml} is missing or incorrectly formatted.")
+            print("ERROR:  Corresponding YAML file", fn_yaml, "is missing or incorrectly formatted.")
             sys.exit(1) 
 
 
     def mapClick(self, event):
-        print('click')
         # get current model value
         x = math.floor(event.scenePos().x() / self.pixels_per_cell)
         y = math.floor(event.scenePos().y() / self.pixels_per_cell)
@@ -213,8 +214,8 @@ class MapEditor(QtWidgets.QMainWindow):
 
 
     def saveEvent(self, event):
-        self.im.save("map_old.pgm")
-        #self.im.save(self.fn)
+        #self.im.save("map_old.pgm")
+        self.im.save(self.fn)
 
 
 if __name__ == '__main__':
