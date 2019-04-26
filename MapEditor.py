@@ -25,12 +25,6 @@ class MapEditor(QtWidgets.QMainWindow):
         self.ui = Ui_MapEditor()
         self.ui.setupUi(self)
 
-        self.scene = QtWidgets.QGraphicsScene()
-        self.ui.graphicsView.setScene(self.scene)
-
-        
-
-
         self.setMinimumSize(600, 600)
 
         self.ui.zoomBox.addItem("100 %", 1)
@@ -40,10 +34,16 @@ class MapEditor(QtWidgets.QMainWindow):
         self.ui.zoomBox.addItem("1600 %", 16)
         self.ui.zoomBox.currentIndexChanged.connect(self.handleZoom)
 
+        self.ui.colorBox.addItem('alternate', 0)
+        self.ui.colorBox.addItem('occupied', 1)
+        self.ui.colorBox.addItem('unoccupied', 2)
+        self.ui.colorBox.addItem('uncertain', 3)
+        self.ui.colorBox.currentIndexChanged.connect(self.handleColor)
+        self.color = 'alternate'
+
         self.read(fn)
 
         view_width = self.frameGeometry().width()
-        #view_height = self.frameGeometry.height()
 
         self.min_multiplier = math.ceil(view_width / self.map_width_cells)
         self.zoom = 1
@@ -51,12 +51,22 @@ class MapEditor(QtWidgets.QMainWindow):
 
         self.draw_map()
         
-        self.scene.mousePressEvent = self.mapClick
         self.ui.closeButton.clicked.connect(self.closeEvent)
         self.ui.saveButton.clicked.connect(self.saveEvent)
 
         self.ui.graphicsView.horizontalScrollBar().valueChanged.connect(self.scrollChanged)
         self.ui.graphicsView.verticalScrollBar().valueChanged.connect(self.scrollChanged)
+
+        self.ui.graphicsView.setMouseTracking(True)
+        self.ui.graphicsView.installEventFilter(self)
+
+
+    def eventFilter(self, source, event):
+        if event.type() == QtCore.QEvent.MouseMove:   #and source is self.ui.graphicsView
+            pos = event.pos()
+            #print('mouse move: (%d, %d)' % (pos.x(), pos.y()))
+        return super(MapEditor, self).eventFilter(source, event)
+        #return QtGui.QWidget.eventFilter(self, source, event)
 
 
     def paintEvent(self, e):
@@ -65,11 +75,12 @@ class MapEditor(QtWidgets.QMainWindow):
 
     def scrollChanged(self, val):
         
-        x = int(self.ui.graphicsView.horizontalScrollBar().value() /  self.scene.width() * self.im.size[0])
-        y = int(self.ui.graphicsView.verticalScrollBar().value() /  self.scene.height() * self.im.size[1])
-        width = int(self.ui.graphicsView.viewport().size().width() /  self.scene.width() * self.im.size[0])
-        height = int(self.ui.graphicsView.viewport().size().height() /  self.scene.height() * self.im.size[1])
-        self.drawBox(x, y, width, height)
+        if self.scene.width and self.scene.height():
+            x = int(self.ui.graphicsView.horizontalScrollBar().value() /  self.scene.width() * self.im.size[0])
+            y = int(self.ui.graphicsView.verticalScrollBar().value() /  self.scene.height() * self.im.size[1])
+            width = int(self.ui.graphicsView.viewport().size().width() /  self.scene.width() * self.im.size[0])
+            height = int(self.ui.graphicsView.viewport().size().height() /  self.scene.height() * self.im.size[1])
+            self.drawBox(x, y, width, height)
 
 
     def drawBox(self, x=5, y=5, width=50, height=50):
@@ -90,6 +101,8 @@ class MapEditor(QtWidgets.QMainWindow):
         self.ui.label_2.setPixmap(pix)
         self.ui.label_2.show()
 
+    def handleColor(self, index):
+        self.color = self.ui.colorBox.currentText()
 
     def handleZoom(self, index):
         self.zoom = self.ui.zoomBox.currentData()
@@ -100,7 +113,7 @@ class MapEditor(QtWidgets.QMainWindow):
     def read(self, fn):
         # try to open as fn or fn.pgm
         try:
-            self.im = Image.open(fn, mode='rw')
+            self.im = Image.open(fn)
             self.fn = fn
         except:
             fnpgm = fn + '.pgm'
@@ -117,10 +130,14 @@ class MapEditor(QtWidgets.QMainWindow):
 
         if self.im.mode != 'L':
             print("ERROR:  This PGM file is not of mode L.")
-            sys.exit(1)           
+            sys.exit(1)   
 
         self.map_width_cells = self.im.size[0]
         self.map_height_cells = self.im.size[1]
+
+        self.ui.filename_lbl.setText(self.fn) 
+        self.ui.width_lbl.setText(str(self.map_width_cells))
+        self.ui.height_lbl.setText(str(self.map_height_cells))
 
         fn_yaml = os.path.splitext(fn)[0] + '.yaml'
         try:
@@ -138,19 +155,25 @@ class MapEditor(QtWidgets.QMainWindow):
 
 
     def mapClick(self, event):
-        print('click')
         # get current model value
         x = math.floor(event.scenePos().x() / self.pixels_per_cell)
         y = math.floor(event.scenePos().y() / self.pixels_per_cell)
         val = self.im.getpixel((x,y))
 
-        # determine next value in sequence white->black->gray
-        if val <= (255.0 * (1.0 - self.occupied_thresh)):  # if black, become gray
-            val = 200
-        elif val <= (255.0 * (1.0 - self.free_thresh)):  # else if gray, become white
+        if self.color == 'occupied':
+            val = 0
+        elif self.color == 'unoccupied':
             val = 255
-        else:  # else its white, become black
-            val = 0    
+        elif self.color == 'uncertain':
+            val = 200
+        else:
+            # determine next value in sequence white->black->gray
+            if val <= (255.0 * (1.0 - self.occupied_thresh)):  # if black, become gray
+                val = 200
+            elif val <= (255.0 * (1.0 - self.free_thresh)):  # else if gray, become white
+                val = 255
+            else:  # else its white, become black
+                val = 0    
 
         # update model with new value
         self.im.putpixel((x,y), val)    
@@ -180,11 +203,11 @@ class MapEditor(QtWidgets.QMainWindow):
         #print(x, y, self.pixels_per_cell, self.pixels_per_cell)
         self.scene.addRect(x, y, self.pixels_per_cell, self.pixels_per_cell, pen, brush)
 
-
-    def draw_map(self):
-        
+    def draw_map(self):        
         self.scene = QtWidgets.QGraphicsScene()
         self.ui.graphicsView.setScene(self.scene)
+        self.scene.mousePressEvent = self.mapClick
+
         # draw the cells
         self.scene.clear()
         for x in range(0,self.map_width_cells):
@@ -204,17 +227,12 @@ class MapEditor(QtWidgets.QMainWindow):
             for y in range(0, pixel_height, self.pixels_per_cell):
                 self.scene.addLine(0, y, pixel_width, y, pen)
 
-
-        
-        
-
     def closeEvent(self, event):
         self.close()
 
-
     def saveEvent(self, event):
-        self.im.save("map_old.pgm")
-        #self.im.save(self.fn)
+        #self.im.save("map_old.pgm")
+        self.im.save(self.fn)
 
 
 if __name__ == '__main__':
