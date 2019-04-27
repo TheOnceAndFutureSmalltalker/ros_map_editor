@@ -58,15 +58,31 @@ class MapEditor(QtWidgets.QMainWindow):
         self.ui.graphicsView.verticalScrollBar().valueChanged.connect(self.scrollChanged)
 
         self.ui.graphicsView.setMouseTracking(True)
-        self.ui.graphicsView.installEventFilter(self)
+        self.ui.graphicsView.viewport().installEventFilter(self)
 
 
     def eventFilter(self, source, event):
-        if event.type() == QtCore.QEvent.MouseMove:   #and source is self.ui.graphicsView
+        if event.type() == QtCore.QEvent.MouseMove and source is self.ui.graphicsView.viewport() and self.color != 'alternate' and event.buttons() == QtCore.Qt.LeftButton:
             pos = event.pos()
-            #print('mouse move: (%d, %d)' % (pos.x(), pos.y()))
+            x = pos.x() + self.ui.graphicsView.horizontalScrollBar().value()
+            y = pos.y() + self.ui.graphicsView.verticalScrollBar().value()
+            x = math.floor(x / self.pixels_per_cell)
+            y = math.floor(y / self.pixels_per_cell)
+            val = self.im.getpixel((x,y))
+
+            if self.color == 'occupied':
+                val = 0
+            elif self.color == 'unoccupied':
+                val = 255
+            elif self.color == 'uncertain':
+                val = 200
+            # update model with new value
+            self.im.putpixel((x,y), val)    
+
+            # redraw cell in new color
+            color = self.value2color(val)
+            self.color_cell(x, y, color)
         return super(MapEditor, self).eventFilter(source, event)
-        #return QtGui.QWidget.eventFilter(self, source, event)
 
 
     def paintEvent(self, e):
@@ -75,7 +91,7 @@ class MapEditor(QtWidgets.QMainWindow):
 
     def scrollChanged(self, val):
         
-        if self.scene.width and self.scene.height():
+        if self.scene.width() and self.scene.height():
             x = int(self.ui.graphicsView.horizontalScrollBar().value() /  self.scene.width() * self.im.size[0])
             y = int(self.ui.graphicsView.verticalScrollBar().value() /  self.scene.height() * self.im.size[1])
             width = int(self.ui.graphicsView.viewport().size().width() /  self.scene.width() * self.im.size[0])
@@ -182,6 +198,7 @@ class MapEditor(QtWidgets.QMainWindow):
 
         # redraw cell in new color
         color = self.value2color(val)
+
         self.color_cell(x, y, color)
 
 
@@ -193,8 +210,21 @@ class MapEditor(QtWidgets.QMainWindow):
         else:
             return Qt.black
 
-        
     def color_cell(self, x, y, color):
+        pen = QPen(color)
+        pen.setWidth(1)
+        if self.pixels_per_cell > 10:
+            pen = QPen(Qt.lightGray)
+        brush = QBrush(color)
+        #x = x * self.pixels_per_cell
+        #y = y * self.pixels_per_cell
+  
+        qrect = self.grids[x][y]
+        qrect.setBrush(brush)
+        qrect.setPen(pen)
+
+        
+    def add_cell(self, x, y, color):
         pen = QPen(color)
         pen.setWidth(1)
         if self.pixels_per_cell > 10:
@@ -202,21 +232,25 @@ class MapEditor(QtWidgets.QMainWindow):
         brush = QBrush(color)
         x = x * self.pixels_per_cell
         y = y * self.pixels_per_cell
-        #print(x, y, self.pixels_per_cell, self.pixels_per_cell)
-        self.scene.addRect(x, y, self.pixels_per_cell, self.pixels_per_cell, pen, brush)
+        return self.scene.addRect(x, y, self.pixels_per_cell, self.pixels_per_cell, pen, brush)
+
 
     def draw_map(self):        
         self.scene = QtWidgets.QGraphicsScene()
         self.ui.graphicsView.setScene(self.scene)
         self.scene.mousePressEvent = self.mapClick
+        self.grids = []
 
         # draw the cells
         self.scene.clear()
         for x in range(0,self.map_width_cells):
+            grid_col = []
             for y in range(0, self.map_height_cells):
                 val = self.im.getpixel((x,y))
                 color = self.value2color(val)
-                self.color_cell(x,y,color)
+                qrect = self.add_cell(x,y,color)
+                grid_col.append(qrect)
+            self.grids.append(grid_col)
 
         # draw the grid lines
         if self.pixels_per_cell > 10:
